@@ -6,6 +6,7 @@ the UI's pages. The UI streams, so only a stream handler is registered. The mode
 resources/app.yml.
 """
 
+import json
 import os
 from collections.abc import AsyncGenerator
 
@@ -14,6 +15,7 @@ from databricks.sdk import WorkspaceClient
 from databricks_langchain import ChatDatabricks
 from langchain.agents import create_agent
 from langchain.tools import tool
+from langchain_core.messages import AIMessage
 from mlflow.genai.agent_server import AgentServer, stream
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -52,13 +54,33 @@ agent = create_agent(
 )
 
 
+def answer_text(message: AIMessage) -> str:
+    """Return the text blocks of a model message, without its reasoning block.
+
+    A model that thinks answers with a list of typed blocks, which ChatDatabricks hands
+    over as one JSON string that starts with the reasoning block. The answer is the
+    blocks of type text, and nothing else.
+    """
+    content = str(message.text)
+    if content.startswith('[{"type": "reasoning"'):
+        return "".join(block["text"] for block in json.loads(content) if block["type"] == "text")
+    return content
+
+
 @stream()
 async def stream_handler(request: ResponsesAgentRequest) -> AsyncGenerator[ResponsesAgentStreamEvent, None]:
     """Emit each step's completed items: the tool call, its results, and the answer."""
     messages = to_chat_completions_input([item.model_dump() for item in request.input])
     async for step in agent.astream({"messages": messages}, stream_mode="updates"):
         for node in step.values():
-            for event in output_to_responses_items_stream(node["messages"]):
+            # Copies for display only: the graph keeps the reasoning, which the model needs on later turns.
+            shown = (
+                message.model_copy(update={"content": answer_text(message)})
+                if isinstance(message, AIMessage)
+                else message
+                for message in node["messages"]
+            )
+            for event in output_to_responses_items_stream(shown):
                 yield event
 
 
