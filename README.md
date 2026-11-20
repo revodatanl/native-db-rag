@@ -60,6 +60,10 @@ The app searches as its own service principal: the bundle grants it `USE SCHEMA`
 
 Conversations are kept. The bundle creates a Lakebase instance, `confluence-rag-history`, and binds its `databricks_postgres` database to the app. The binding sets the `PG*` environment variables, and the UI saves conversations whenever they are set. The UI's own migrations (`npm run db:migrate`) create its tables; they run on every start, before the UI does, so a newer UI never starts on an older schema. Conversations survive a restart or a redeploy of the app.
 
+### Feedback
+
+Every answer has a thumbs up and a thumbs down. Nothing had to be built for them: the chat UI has them, and the app's experiment binding (`MLFLOW_EXPERIMENT_ID`) turns them on. Each vote is logged as a `user_feedback` assessment on that answer's trace, `true` for up and `false` for down, attributed to the user who voted. The **Traces** tab of the bundle's experiment shows the votes, and the Lakebase database remembers them, so a reload shows the same thumbs.
+
 ## Tear down
 
 ```bash
