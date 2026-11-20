@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    # Run by hand, once the wiki is loaded (see README).
+    evaluate:
+      name: ${bundle.name}-evaluate
+      tasks:
+        - task_key: evaluate
+          environment_key: evaluation
+          notebook_task:
+            notebook_path: ../src/evaluate.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${resources.schemas.rag.name}
+              experiment_id: ${resources.experiments.traces.id}
+              llm_model: ${var.llm_model}
+              judge_model: ${var.judge_model}
+              num_questions: "20"
+      environments:
+        - environment_key: evaluation
+          spec:
+            environment_version: "4"
+            dependencies:
+              # The project's wheel (artifacts in databricks.yml) brings the agent and the app's
+              # dependency bounds. uv's constraint-dependencies do not travel with a wheel, so the
+              # two security limits from pyproject.toml are repeated here.
+              - ../dist/*.whl
+              - certifi>=2026.10.19
+              - pandas>=2.3.3,<3
+              # Writes the questions and stores the evaluation dataset.
+              - databricks-agents>=1.13.0

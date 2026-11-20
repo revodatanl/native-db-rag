@@ -30,6 +30,6 @@ resources:
             permission: CAN_EDIT
         - name: llm
           uc_securable:
-            securable_full_name: system.ai.claude-sonnet-4-6
+            securable_full_name: ${var.llm_model}
             securable_type: MODEL_SERVICE
             permission: EXECUTE
