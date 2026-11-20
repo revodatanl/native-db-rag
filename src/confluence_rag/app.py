@@ -30,13 +30,14 @@ def setup_ui() -> None:
 
 
 def start_ui() -> None:
-    """Run the UI in the background; when Databricks Apps stops this process, stop all of the UI's too."""
+    """Migrate the database and run the UI; when Databricks Apps stops this process, stop all of the UI's too."""
+    subprocess.run(["npm", "run", "db:migrate"], cwd=UI_DIR, check=True)
     ui = subprocess.Popen(["npm", "run", "start"], cwd=UI_DIR, env=os.environ | UI_ENV, start_new_session=True)
     signal.signal(signal.SIGTERM, lambda *_: os.killpg(ui.pid, signal.SIGTERM))
 
 
 def main() -> None:
-    """Entry point for `uv run start-app`: start the UI, then serve the agent."""
+    """Entry point for `uv run start-app`: build the UI, migrate and start it, then serve the agent."""
     setup_ui()
     start_ui()
     server.run(app_import_string="confluence_rag.agent:server.app")
