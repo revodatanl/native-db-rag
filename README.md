@@ -6,7 +6,7 @@ Chat with your Confluence wiki on Databricks, built from native building blocks 
 
 - [uv](https://docs.astral.sh/uv/) for the Python side.
 - [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html), version 1.3.0 or above.
-- A workspace with serverless compute, Lakeflow Connect, AI Search, and Databricks Apps enabled.
+- A workspace with serverless compute, Lakeflow Connect, AI Search, Lakebase, and Databricks Apps enabled.
 - A Unity Catalog catalog you can create schemas in (default `main`). The app's service principal needs `USE CATALOG` on it.
 - A Unity Catalog connection of type **Confluence** (here named `confluence`), created once in Catalog Explorer > Connections (OAuth needs a browser, so there is no CLI equivalent).
 
@@ -17,7 +17,7 @@ databricks bundle validate --profile <profile>
 databricks bundle deploy --profile <profile>
 ```
 
-The first deploy also creates the AI Search endpoint, which takes a few minutes to come online. Deploying uploads the app's code but does not start it; start it once (later deploys of new code need the same command):
+The first deploy also creates the AI Search endpoint and the Lakebase instance for the chat history, which take a few minutes to come online. Deploying uploads the app's code but does not start it; start it once (later deploys of new code need the same command):
 
 ```bash
 databricks bundle run chat --profile <profile>
@@ -58,18 +58,19 @@ The server is MLflow's `AgentServer`, from Databricks' [agent-langgraph](https:/
 
 The app searches as its own service principal: the bundle grants it `USE SCHEMA` and `SELECT` on the schema, which covers the index and anything added to the schema later. Everyone in the organization can open it: the bundle grants `CAN_USE` to `account users`, and users sign in with their Databricks SSO.
 
+Conversations are kept. The bundle creates a Lakebase instance, `confluence-rag-history`, and binds its `databricks_postgres` database to the app. The binding sets the `PG*` environment variables, and the UI saves conversations whenever they are set. The UI's own migrations (`npm run db:migrate`) create its tables; they run on every start, before the UI does, so a newer UI never starts on an older schema. Conversations survive a restart or a redeploy of the app.
+
 ## Tear down
 
 ```bash
 databricks bundle destroy --profile <profile>
 ```
 
-This deletes everything the bundle owns, including the schema and its data.
+This deletes everything the bundle owns, including the schema and its data, and the Lakebase instance with every saved conversation.
 
 ## What is not here, on purpose
 
 - No attachments or images. The connector ships attachment metadata only, so images and attachments are left out. Image tags carry no text and drop out of the Markdown on their own.
 - No prompt registry. The prompt is a constant in `src/confluence_rag/agent.py`; change it and redeploy. The [MLflow Prompt Registry](https://docs.databricks.com/aws/en/mlflow3/genai/prompt-version-mgmt/prompt-registry) would version it.
-- No chat history. The UI runs in ephemeral mode, so there is no Lakebase.
 - No evaluation loop. Nothing quantifies the quality of the answers yet.
 - No per-user authorization. The app searches as its own service principal, so every user sees what the index holds.
