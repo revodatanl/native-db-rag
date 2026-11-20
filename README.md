@@ -17,9 +17,10 @@ databricks bundle validate --profile <profile>
 databricks bundle deploy --profile <profile>
 ```
 
-The first deploy also creates the AI Search endpoint, which takes a few minutes to come online. Deploying uploads the app's code but does not start it; start it once (later deploys of new code need the same command):
+The first deploy also creates the AI Search endpoint, which takes a few minutes to come online. Deploying uploads the app's code but does not start it. The agent loads its system prompt from the MLflow Prompt Registry when it starts, so register the prompt first, then start the app (later deploys of new code need the second command again):
 
 ```bash
+databricks bundle run register_prompt --profile <profile>
 databricks bundle run chat --profile <profile>
 ```
 
@@ -56,7 +57,23 @@ Open the URL that `bundle run chat` printed and ask something only your wiki kno
 
 The server is MLflow's `AgentServer`, from Databricks' [agent-langgraph](https://github.com/databricks/app-templates/tree/main/agent-langgraph) template. The chat UI is Databricks' [e2e-chatbot-app-next](https://github.com/databricks/app-templates/tree/main/e2e-chatbot-app-next) template, cloned from GitHub and built with npm when the app starts, so the first start takes a few minutes and needs outbound access to GitHub.
 
-The app searches as its own service principal: the bundle grants it `USE SCHEMA` and `SELECT` on the schema, which covers the index and anything added to the schema later. Everyone in the organization can open it: the bundle grants `CAN_USE` to `account users`, and users sign in with their Databricks SSO.
+The app searches as its own service principal: the bundle grants it `USE SCHEMA`, `SELECT` and `EXECUTE` on the schema, which covers the index, the system prompt (see below), and anything added to the schema later. Everyone in the organization can open it: the bundle grants `CAN_USE` to `account users`, and users sign in with their Databricks SSO.
+
+## Version the prompt
+
+The system prompt is a prompt in the [MLflow Prompt Registry](https://docs.databricks.com/aws/en/mlflow3/genai/prompt-version-mgmt/prompt-registry), `<catalog>.<schema>.system_prompt`, and the agent loads the version behind its `production` alias. The text in `src/register_prompt.py` is the source: the `register_prompt` job registers it as a new version and moves `production` to it. To change the prompt, edit the script, then deploy, register and restart:
+
+```bash
+databricks bundle deploy --profile <profile>
+databricks bundle run register_prompt --profile <profile>
+databricks bundle run chat --profile <profile>
+```
+
+The agent loads the prompt once, at startup, so a running app keeps its prompt until it restarts. Without a `production` alias the app does not start.
+
+The registry keeps every version. To roll back, point `production` at an older one with `mlflow.genai.set_prompt_alias` and restart the app; the next run of the job moves the alias to the script's text again.
+
+Running the job needs `CREATE FUNCTION`, `EXECUTE` and `MANAGE` on the schema; whoever deploys the bundle creates the schema and has them. The app only loads the prompt, with the `EXECUTE` the bundle grants it.
 
 ## Tear down
 
@@ -69,7 +86,6 @@ This deletes everything the bundle owns, including the schema and its data.
 ## What is not here, on purpose
 
 - No attachments or images. The connector ships attachment metadata only, so images and attachments are left out. Image tags carry no text and drop out of the Markdown on their own.
-- No prompt registry. The prompt is a constant in `src/confluence_rag/agent.py`; change it and redeploy. The [MLflow Prompt Registry](https://docs.databricks.com/aws/en/mlflow3/genai/prompt-version-mgmt/prompt-registry) would version it.
 - No chat history. The UI runs in ephemeral mode, so there is no Lakebase.
 - No evaluation loop. Nothing quantifies the quality of the answers yet.
 - No per-user authorization. The app searches as its own service principal, so every user sees what the index holds.

@@ -2,8 +2,8 @@
 
 MLflow's agent server speaks the OpenAI Responses API the chat UI expects, and proxies
 the UI's pages. The UI streams, so only a stream handler is registered. The model
-(a Unity Gateway model service) and the index come from environment variables set in
-resources/app.yml.
+(a Unity Gateway model service), the index and the name of the system prompt come from
+environment variables set in resources/app.yml.
 """
 
 import os
@@ -24,9 +24,10 @@ from mlflow.types.responses import (
 
 mlflow.langchain.autolog()
 
-SYSTEM_PROMPT = """You answer questions about the company wiki.
-Always call search_wiki before answering. If the results look thin, search again with a reformulated query.
-Answer only from the results, and list the source paths you used. Say so when the wiki does not contain the answer."""
+# Loaded once, at startup: restart the app after moving the production alias.
+system_prompt = mlflow.genai.load_prompt(f"prompts:/{os.environ['SYSTEM_PROMPT_NAME']}@production").template
+if not isinstance(system_prompt, str):
+    raise TypeError("The system prompt must be a text prompt.")
 
 w = WorkspaceClient()
 
@@ -48,7 +49,7 @@ def search_wiki(query: str) -> list[dict]:
 agent = create_agent(
     model=ChatDatabricks(model=os.environ["LLM_MODEL"], use_ai_gateway=True),
     tools=[search_wiki],
-    system_prompt=SYSTEM_PROMPT,
+    system_prompt=system_prompt,
 )
 
 
