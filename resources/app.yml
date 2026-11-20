@@ -23,6 +23,8 @@ resources:
             value_from: llm
           - name: VECTOR_SEARCH_INDEX
             value: ${var.catalog}.${resources.schemas.rag.name}.chunks_index
+          - name: SYSTEM_PROMPT_NAME
+            value: ${var.catalog}.${resources.schemas.rag.name}.system_prompt
       resources:
         - name: experiment
           experiment:

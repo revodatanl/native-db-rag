@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    # Run by hand: registers the prompt in src/register_prompt.py as a new version
+    # and points the production alias at it. Deploying does not run it.
+    register_prompt:
+      name: ${bundle.name}-register-prompt
+      tasks:
+        - task_key: register_prompt
+          spark_python_task:
+            python_file: ../src/register_prompt.py
+            parameters:
+              - ${var.catalog}.${resources.schemas.rag.name}.system_prompt
+          environment_key: prompt
+      environments:
+        - environment_key: prompt
+          spec:
+            environment_version: "4"
+            dependencies:
+              - mlflow[databricks]>=3.16.0
