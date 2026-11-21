@@ -14,6 +14,7 @@ from databricks.sdk import WorkspaceClient
 from databricks_langchain import ChatDatabricks
 from langchain.agents import create_agent
 from langchain.tools import tool
+from mlflow.entities import SpanType
 from mlflow.genai.agent_server import AgentServer, stream
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -32,6 +33,7 @@ w = WorkspaceClient()
 
 
 @tool
+@mlflow.trace(span_type=SpanType.RETRIEVER)  # the evaluation's retrieval scorers read RETRIEVER spans
 def search_wiki(query: str) -> list[dict]:
     """Search the company wiki for passages relevant to a query."""
     response = w.vector_search_indexes.query_index(

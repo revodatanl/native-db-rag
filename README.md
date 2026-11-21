@@ -58,6 +58,32 @@ The server is MLflow's `AgentServer`, from Databricks' [agent-langgraph](https:/
 
 The app searches as its own service principal: the bundle grants it `USE SCHEMA` and `SELECT` on the schema, which covers the index and anything added to the schema later. Everyone in the organization can open it: the bundle grants `CAN_USE` to `account users`, and users sign in with their Databricks SSO.
 
+## Evaluate
+
+```bash
+databricks bundle run evaluate --profile <profile>
+```
+
+The `evaluate` job asks the agent a fixed set of questions and scores what it retrieved and what it answered. Run it once the wiki is loaded.
+
+Nobody writes the questions. On the first run, Databricks writes 20 of them from a sample of the wiki's pages that have at least 500 characters of text ([`generate_evals_df`](https://docs.databricks.com/aws/en/agents/agent-evaluation/synthesize-evaluation-set)), each with the facts a right answer contains and the page it was written from. They are stored as an MLflow [evaluation dataset](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/build-eval-dataset), the table `evaluation_questions` in the bundle's schema. Later runs reuse it, so the scores of two runs can be compared. Drop the table to have new questions written.
+
+| Score | Question it answers | How |
+|---|---|---|
+| `source_page_retrieved` | Did `search_wiki` return the page the question was written from? | code |
+| `RetrievalRelevance` | Are the passages it returned about the question? | judge |
+| `RetrievalSufficiency` | Do the passages hold what is needed to give the expected facts? | judge |
+| `RetrievalGroundedness` | Is the answer supported by the passages? | judge |
+| `RelevanceToQuery` | Does the answer address the question? | judge |
+| `Correctness` | Does the answer agree with the expected facts? | judge |
+| `cites_sources` | Does the answer name wiki paths, or say the wiki has no answer? The judge sees only the question and the answer. | judge |
+
+The judges are MLflow's built-in ones, run on `judge_model`, a different and stronger model than `llm_model`, which answers (both in `databricks.yml`): a model that grades its own answers favors them. The questions go straight to the agent, not through the app, and the traces and scores land in the bundle's experiment, next to the app's. The retrieval judges score every search the agent made, so a question with three searches counts three times in their averages. The job prints the average of each score and does not fail on low ones; the evaluation run in the experiment shows every question with its trace and each judge's reasoning. It does fail when a scorer returns nothing at all, which is what a `judge_model` the workspace does not allow looks like: set the variable to one it does.
+
+Generated questions are a smoke test, not the last word. They are written from one page each, so they are easier than what people really ask, and every one of them has an answer in the wiki. Nobody has checked the judges against a person's verdict either: read a few questions and a few verdicts before you trust the numbers. Then make the set yours in the experiment's **Datasets** tab: edit or remove questions, and add real ones, such as the answers that got a thumbs down.
+
+The job runs as the identity that deployed the bundle, not as whoever clicks Run; `run_as` in `databricks.yml` changes that. That identity needs `EXECUTE` on both model services, which the app's grant does not reach. Writing the questions is a Databricks service: it needs partner-powered AI features enabled, and does not work in a workspace with serverless egress control.
+
 ## Tear down
 
 ```bash
@@ -71,5 +97,4 @@ This deletes everything the bundle owns, including the schema and its data.
 - No attachments or images. The connector ships attachment metadata only, so images and attachments are left out. Image tags carry no text and drop out of the Markdown on their own.
 - No prompt registry. The prompt is a constant in `src/confluence_rag/agent.py`; change it and redeploy. The [MLflow Prompt Registry](https://docs.databricks.com/aws/en/mlflow3/genai/prompt-version-mgmt/prompt-registry) would version it.
 - No chat history. The UI runs in ephemeral mode, so there is no Lakebase.
-- No evaluation loop. Nothing quantifies the quality of the answers yet.
 - No per-user authorization. The app searches as its own service principal, so every user sees what the index holds.
